@@ -15,14 +15,14 @@ import (
 
 func init() {
 	// Log as JSON instead of the default ASCII formatter.
-	log.SetFormatter(&log.TextFormatter{})
+	log.SetFormatter(&log.JSONFormatter{})
 
 	// Output to stdout instead of the default stderr
 	// Can be any io.Writer, see below for File example
 	log.SetOutput(os.Stdout)
 
 	// Only log the warning severity or above.
-	log.SetLevel(log.WarnLevel)
+	log.SetLevel(log.InfoLevel)
 }
 
 const dataDir = "./data"
@@ -36,7 +36,7 @@ const (
 
 func main() {
 	var (
-		crawler = Type(HUOBI)
+		crawler = Type(BINANCE)
 	)
 	switch crawler {
 	case HUOBI:
@@ -126,7 +126,7 @@ func crawlerHuobiKline(pair string, samplingPeriod string, url string) error {
 		// Unzip file
 		files, err := Unzip(outFile, dataDir)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("%+v : %+v ",outFile,err.Error())
 			continue
 		}
 		log.Infof("Unzipped 火币K线数据: %+v", files)
@@ -254,7 +254,6 @@ func DownloadFile(filepath string, url string) error {
 		log.Error(err)
 		return err
 	}
-	fmt.Println(resp.Body, err)
 	defer resp.Body.Close()
 
 	// Create the file
@@ -281,7 +280,6 @@ func Unzip(src string, dest string) ([]string, error) {
 
 	r, err := zip.OpenReader(src)
 	if err != nil {
-		log.Error(err)
 		return filenames, err
 	}
 	defer r.Close()
