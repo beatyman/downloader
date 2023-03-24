@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"encoding/csv"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -10,21 +9,20 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
 
 func init() {
 	// Log as JSON instead of the default ASCII formatter.
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(&log.TextFormatter{})
 
 	// Output to stdout instead of the default stderr
 	// Can be any io.Writer, see below for File example
 	log.SetOutput(os.Stdout)
 
 	// Only log the warning severity or above.
-	log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.WarnLevel)
 }
 
 const dataDir = "./data"
@@ -48,8 +46,6 @@ func main() {
 			log.Error(err)
 			return
 		}
-		//解析CSV
-		ReadHuoBiCsv()
 	case BINANCE:
 		var binanceURL = "https://data.binance.vision/data/spot/daily/klines/"
 		err := crawlerBinanceKline("FILUSDT", "1h", binanceURL)
@@ -60,109 +56,10 @@ func main() {
 	}
 }
 
-func ReadHuoBiCsv() error {
-	//https://futures.huobi.com/data/klines/spot/daily/FILUSDT/60min/FILUSDT-60min-2022-02-24.zip
-	file, err := os.Create("./data/huobi_1h_FILUSDT.csv")
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	//windows bom
-	_, err = file.Write([]byte{0xEF, 0xBB, 0xBF})
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer file.Close()
-	writer := csv.NewWriter(file)
-	err = writer.Write([]string{
-		"开盘时间戳",
-		"开盘时间",
-		"年",
-		"月",
-		"日",
-		"小时",
-		"开盘价",
-		"收盘价",
-		"最高价",
-		"最低价",
-		"以基础币种计量的交易量",
-		"以报价币种计量的交易量",
-		"交易次数",
-	})
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	originFile, err := os.Open("./data/huobi_FILUSDT.csv")
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	scanner := bufio.NewScanner(originFile)
-
-	scanner.Split(bufio.ScanLines)
-	var ss []string
-	for scanner.Scan() {
-		ss = append(ss, scanner.Text())
-	}
-	originFile.Close()
-	// 读取文件数据
-	sz := len(ss)
-	// 循环取数据
-	for i := 1; i < sz; i++ {
-		log.Infof("line %+v , val: %+v", i, ss[i])
-		tmp := strings.Split(ss[i], ",")
-		// 1602774000,10.0,137.0001,220.0001,10.0,1.0231803003396902E7,84333.49782092
-		id := tmp[0] //时间戳
-		open := tmp[1]
-		clos := tmp[2]
-		high := tmp[3]
-		low := tmp[4]
-		amount := tmp[5]
-		vol := tmp[6]
-		count := ""
-		if len(tmp) > 7 {
-			count = tmp[7]
-		}
-		timeTemplate := "2006-01-02 15:04:05"
-		ts, err := strconv.Atoi(id)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		timeStr := time.Unix(int64(ts), 0)
-		year := timeStr.Year()
-		month := int64(timeStr.Month())
-		day := timeStr.Day()
-		hour := timeStr.Hour()
-		err = writer.Write([]string{
-			id,
-			timeStr.Format(timeTemplate),
-			strconv.Itoa(year),
-			strconv.Itoa(int(month)),
-			strconv.Itoa(day),
-			strconv.Itoa(hour),
-			open,
-			clos,
-			high,
-			low,
-			amount,
-			vol,
-			count,
-		})
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-	}
-	writer.Flush()
-	return nil
-}
 func crawlerHuobiKline(pair string, samplingPeriod string, url string) error {
 	//抓取时间设置
 	start := "2020-01-01 00:00:00"
-	end := "2022-09-06 00:00:00"
+	end := time.Now().Format("2006-01-02 15:04:05")
 
 	//https://futures.huobi.com/data/klines/spot/daily/FILUSDT/60min/FILUSDT-60min-2022-02-24.zip
 	file, err := os.Create("./data/huobi_FILUSDT.csv")
@@ -229,7 +126,7 @@ func crawlerHuobiKline(pair string, samplingPeriod string, url string) error {
 		// Unzip file
 		files, err := Unzip(outFile, dataDir)
 		if err != nil {
-			log.Errorf("%+v : %+v ", outFile, err.Error())
+			log.Error(err)
 			continue
 		}
 		log.Infof("Unzipped 火币K线数据: %+v", files)
@@ -256,7 +153,7 @@ func crawlerHuobiKline(pair string, samplingPeriod string, url string) error {
 func crawlerBinanceKline(pair string, samplingPeriod string, url string) error {
 	//抓取时间设置
 	start := "2020-01-01 00:00:00"
-	end := "2022-09-05 00:00:00"
+	end := time.Now().Format("2006-01-02 15:04:05")
 
 	file, err := os.Create("./data/binance_FILUSDT.csv")
 	if err != nil {
@@ -357,6 +254,7 @@ func DownloadFile(filepath string, url string) error {
 		log.Error(err)
 		return err
 	}
+	fmt.Println(resp.Body, err)
 	defer resp.Body.Close()
 
 	// Create the file
@@ -383,6 +281,7 @@ func Unzip(src string, dest string) ([]string, error) {
 
 	r, err := zip.OpenReader(src)
 	if err != nil {
+		log.Error(err)
 		return filenames, err
 	}
 	defer r.Close()
